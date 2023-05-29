@@ -1,8 +1,11 @@
 use std::error::Error;
-use crate::chain::Chain;
-use crate::utils::SegT;
+use crate::schain::SChain;
+#[macro_use]
+use crate::schain;
+use crate::utils::{Seg, SegT};
 
-#[derive(PartialEq)]
+#[derive(Clone)]
+#[derive(PartialEq, PartialOrd)]
 #[derive(Debug)]
 pub struct Segment {
     start: u32,
@@ -15,6 +18,12 @@ impl Default for Segment {
             start: u32::MAX,
             end: u32::MAX,
         }
+    }
+}
+
+impl From<Segment> for (u32, u32) {
+    fn from(seg: Segment) -> Self {
+        (seg.start, seg.end)
     }
 }
 
@@ -50,12 +59,35 @@ impl Segment {
     }
 }
 
-impl SegT<Segment> for Segment {
-    type Output = Segment;
-
+impl Seg for Segment {
     fn contains(&self, value: u32) -> bool {
         value >= self.start && value <= self.end
     }
+    fn start(&self) -> Option<&u32> {
+        Some(&self.start)
+    }
+    fn end(&self) -> Option<&u32> {
+        Some(&self.end)
+    }
+
+    fn set_start(&mut self, start: u32) -> Result<(),Box<dyn Error>>{
+        if start > self.end {
+            return Err("new start > end".into());
+        }
+        self.start = start;
+        Ok(())
+    }
+    fn set_end(&mut self, end: u32) -> Result<(),Box<dyn Error>>{
+        if end < self.start {
+            return Err("new end < start".into());
+        }
+        self.end = end;
+        Ok(())
+    }
+}
+
+impl SegT<Segment> for Segment {
+    type Output = Segment;
 
     fn intersect(&self, other: &Segment) -> Option<Self::Output> {
         let start = self.start.max(other.start);
@@ -67,8 +99,25 @@ impl SegT<Segment> for Segment {
             None
         }
     }
+
+    fn union(&self, other: &Segment) -> Option<Self::Output> {
+        None
+    }
 }
 
+impl SegT<SChain> for Segment {
+    type Output = SChain;
+
+    fn intersect(&self, other: &SChain) -> Option<Self::Output> {
+        Some(SChain::new())
+    }
+
+    fn union(&self, other: &SChain) -> Option<Self::Output> {
+        None
+    }
+}
+
+#[macro_export]
 macro_rules! seg {
     ($start:expr,$end:expr) => {{
         Segment::new($start,$end)
@@ -106,5 +155,59 @@ mod tests {
         assert_eq!(segtp1.intersect(&segtp3), None);
         assert_eq!(segtp1.intersect(&segtp4), Some(Segment::new(1, 3).unwrap()));
         assert_eq!(segtp1.intersect(&segtp5), None);
+    }
+
+    #[test]
+    fn test_eq(){
+        let s1 = seg!(1,10);
+        let s1 = match s1 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        let s2 = seg!(1,10);
+        let s2 = match s2 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        assert_eq!(s1,s2);
+    }
+
+    #[test]
+    fn test_lt(){
+        let s1 = seg!(1,10);
+        let s1 = match s1 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        let s2 = seg!(2,10);
+        let s2 = match s2 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        assert!(s1<s2);
+
+        let s1 = seg!(1,10);
+        let s1 = match s1 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        let s2 = seg!(2,9);
+        let s2 = match s2 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        assert!(s1<s2);
+
+        let s1 = seg!(1,10);
+        let s1 = match s1 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        let s2 = seg!(1,9);
+        let s2 = match s2 {
+            Ok(x) => x,
+            Err(e) => panic!("fail"),
+        };
+        assert!(s1>s2);
     }
 }
