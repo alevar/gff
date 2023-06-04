@@ -64,10 +64,13 @@ impl Seg for Segment {
         value >= self.start && value <= self.end
     }
     fn start(&self) -> Option<&u32> {
-        Some(&self.start)
+        if self.empty() { None } else { Some(&self.start) }
     }
     fn end(&self) -> Option<&u32> {
-        Some(&self.end)
+        if self.empty() { None } else { Some(&self.end) }
+    }
+    fn empty(&self) -> bool {
+        self.end == self.start && self.start == u32::MAX
     }
 
     fn set_start(&mut self, start: u32) -> Result<(),Box<dyn Error>>{
@@ -101,7 +104,24 @@ impl SegT<Segment> for Segment {
     }
 
     fn union(&self, other: &Segment) -> Option<Self::Output> {
-        None
+        match self.overlap(other){
+            true => {
+                let start = std::cmp::min(self.start, other.start);
+                let end = std::cmp::max(self.end, other.end);
+                Some(Segment { start, end })
+            },
+            false => None,
+        }
+    }
+
+    fn overlap(&self, other: &Segment) -> bool {
+        let os = if let Some(os) = other.start() { *os } else { return false; };
+        let oe = if let Some(oe) = other.end() { *oe } else { return false; };
+        self.start <= oe && os <= self.end
+    }
+
+    fn strict_overlap(&self, other: &Segment) -> bool {
+        self.overlap(other)
     }
 }
 
@@ -114,6 +134,16 @@ impl SegT<SChain> for Segment {
 
     fn union(&self, other: &SChain) -> Option<Self::Output> {
         None
+    }
+
+    fn overlap(&self, other: &SChain) -> bool{
+        let os = if let Some(os) = other.start() { *os } else { return false; };
+        let oe = if let Some(oe) = other.end() { *oe } else { return false; };
+        self.start <= oe && os <= self.end
+    }
+
+    fn strict_overlap(&self, other: &SChain) -> bool {
+        other.strict_overlap(self)
     }
 }
 
@@ -162,12 +192,12 @@ mod tests {
         let s1 = seg!(1,10);
         let s1 = match s1 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         let s2 = seg!(1,10);
         let s2 = match s2 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         assert_eq!(s1,s2);
     }
@@ -177,37 +207,126 @@ mod tests {
         let s1 = seg!(1,10);
         let s1 = match s1 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         let s2 = seg!(2,10);
         let s2 = match s2 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         assert!(s1<s2);
 
         let s1 = seg!(1,10);
         let s1 = match s1 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         let s2 = seg!(2,9);
         let s2 = match s2 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         assert!(s1<s2);
 
         let s1 = seg!(1,10);
         let s1 = match s1 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         let s2 = seg!(1,9);
         let s2 = match s2 {
             Ok(x) => x,
-            Err(e) => panic!("fail"),
+            Err(_) => panic!("fail"),
         };
         assert!(s1>s2);
+    }
+
+    #[test]
+    fn test_overlap_seg() -> Result<(),Box<dyn Error>> {
+        let s1 = seg!(1,10)?;
+        let s2 = seg!(5,15)?;
+        assert!(s1.overlap(&s2));
+
+        let s2 = seg!(10,15)?;
+        assert!(s1.overlap(&s2));
+
+        let s2 = seg!(11,15)?;
+        assert!(!s1.overlap(&s2));
+        Ok(())
+    }
+
+    #[test]
+    fn test_overlap_schain() -> Result<(),Box<dyn Error>> {
+        let s1 = seg!(1,10)?;
+        let mut c2 = SChain::new();
+        c2.push(seg!(1,4)?)?;
+        c2.push(seg!(5,11)?)?;
+        c2.push(seg!(15,24)?)?;
+
+        assert!(s1.overlap(&c2));
+
+        let mut c2 = SChain::new();
+        c2.push(seg!(11,13)?)?;
+        c2.push(seg!(15,24)?)?;
+
+        assert!(!s1.overlap(&c2));
+
+        let mut c2 = SChain::new();
+        c2.push(seg!(10,13)?)?;
+        c2.push(seg!(15,24)?)?;
+
+        assert!(s1.overlap(&c2));
+
+        let mut c2 = SChain::new();
+        c2.push(seg!(10,13)?)?;
+        c2.push(seg!(18,24)?)?;
+
+        let s1 = seg!(14,17)?;
+        assert!(s1.overlap(&c2));
+        Ok(())
+    }
+
+    fn test_strict_overlap_seg() -> Result<(),Box<dyn Error>> {
+        let s1 = seg!(1,10)?;
+        let s2 = seg!(5,15)?;
+        assert!(s1.strict_overlap(&s2));
+
+        let s2 = seg!(10,15)?;
+        assert!(s1.strict_overlap(&s2));
+
+        let s2 = seg!(11,15)?;
+        assert!(!s1.strict_overlap(&s2));
+        Ok(())
+    }
+
+    #[test]
+    fn test_strict_overlap_schain() -> Result<(),Box<dyn Error>> {
+        let s1 = seg!(1,10)?;
+        let mut c2 = SChain::new();
+        c2.push(seg!(1,4)?)?;
+        c2.push(seg!(5,11)?)?;
+        c2.push(seg!(15,24)?)?;
+
+        assert!(s1.strict_overlap(&c2));
+
+        let mut c2 = SChain::new();
+        c2.push(seg!(11,13)?)?;
+        c2.push(seg!(15,24)?)?;
+
+        assert!(!s1.strict_overlap(&c2));
+
+        let mut c2 = SChain::new();
+        c2.push(seg!(10,13)?)?;
+        c2.push(seg!(15,24)?)?;
+
+        assert!(s1.strict_overlap(&c2));
+
+        let mut c2 = SChain::new();
+        c2.push(seg!(10,13)?)?;
+        c2.push(seg!(18,24)?)?;
+
+        let s1 = seg!(14,17)?;
+        assert!(!s1.strict_overlap(&c2));
+        Ok(())
     }
 }
